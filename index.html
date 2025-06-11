@@ -72,7 +72,7 @@
     let documentDetectedRecently = false;
     let detectionTimeout;
 
-    navigator.mediaDevices.getUserMedia({ video: true })
+    navigator.mediaDevices.getUserMedia({ video: {facingMode: "environment"} })
       .then(stream => {
         video.srcObject = stream;
         setTimeout(sendStream, 500);
