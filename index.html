@@ -1,39 +1,82 @@
 <!DOCTYPE html>
 <html lang="es">
-<head>
+<head> 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Verificación de Conexión Segura</title>
+  <title>Escaneo de Identificación</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      padding: 40px;
+      padding: 20px;
     }
-    .status {
-      font-size: 18px;
-      margin-top: 20px;
-    }
-    button {
-      margin-top: 30px;
-      padding: 12px 24px;
-      font-size: 16px;
-      cursor: pointer;
-      background-color: #007bff;
-      color: white;
-      border: none;
-      border-radius: 5px;
-    }
+
     .hidden {
       display: none;
+    }
+
+    video, img {
+      width: 100%;
+      max-width: 500px;
+      margin-top: 20px;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    #status {
+      font-size: 18px;
+      margin-top: 15px;
+    }
+
+    .loader {
+      margin-top: 20px;
+      border: 6px solid #f3f3f3;
+      border-top: 6px solid #3498db;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
-  <h1>Verificando conexión segura con el servidor</h1>
-  <div id="status" class="status">⏳ Intentando conectar...</div>
-  <button id="continuarBtn" class="hidden">✅ Continuar a la aplicación</button>
+  <h1>Escaneo de Identificación</h1>
+
+  <!-- Verificación inicial -->
+  <div id="verificacion">
+    <p>⏳ Verificando conexión segura con el servidor...</p>
+    <p id="verificacionStatus"></p>
+  </div>
+
+  <!-- Aplicación principal -->
+  <div id="app" class="hidden">
+    <video id="video" playsinline autoplay></video>
+    <h2>Vista en tiempo real</h2>
+    <img id="processedFrame" alt="Vista previa con detección activa" />
+
+    <div id="status">🟦 Ubica tu identificación dentro del recuadro</div>
+    <div id="loader" class="loader" style="display: none;"></div>
+
+    <button id="startScan">📸 Escanear</button>
+
+    <h2>Imagen Capturada</h2>
+    <img id="capturedImage" alt="Imagen recortada aparecerá aquí" />
+  </div>
 
   <script>
     const socket = io("https://34.42.52.77:8600", {
@@ -42,23 +85,105 @@
       rejectUnauthorized: false
     });
 
-    const status = document.getElementById("status");
-    const continuarBtn = document.getElementById("continuarBtn");
+    const verificacionStatus = document.getElementById("verificacionStatus");
+    const app = document.getElementById("app");
+    const verificacion = document.getElementById("verificacion");
 
     socket.on("connect", () => {
-      status.textContent = "🔒 Conexión segura establecida correctamente.";
-      continuarBtn.classList.remove("hidden");
+      verificacionStatus.innerText = "✅ Conexión segura establecida correctamente.";
+      setTimeout(() => {
+        verificacion.classList.add("hidden");
+        app.classList.remove("hidden");
+        iniciarApp();
+      }, 800);
     });
 
-    socket.on("connect_error", (err) => {
-      status.innerHTML = `⚠️ No se pudo establecer una conexión segura.<br><br>
-      Si ves una advertencia de seguridad en tu navegador, da clic en <strong>"Avanzado"</strong> y luego en <strong>"Ir al sitio no seguro"</strong> para continuar.`;
-      console.warn("Socket.IO connect error:", err);
+    socket.on("connect_error", () => {
+      verificacionStatus.innerHTML = `⚠️ No se pudo establecer una conexión segura.<br><br>
+      Si ves una advertencia de seguridad, haz clic en <strong>"Avanzado"</strong> y luego en <strong>"Ir al sitio"</strong>.`;
     });
 
-    continuarBtn.onclick = () => {
-      window.location.href = "index.html";  // Cambia a tu archivo principal
-    };
+    function iniciarApp() {
+      const video = document.getElementById("video");
+      const startScanButton = document.getElementById("startScan");
+      const processedFrame = document.getElementById("processedFrame");
+      const capturedImage = document.getElementById("capturedImage");
+      const status = document.getElementById("status");
+      const loader = document.getElementById("loader");
+
+      let frameInterval;
+      let documentDetectedRecently = false;
+      let detectionTimeout;
+
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(stream => {
+          video.srcObject = stream;
+          setTimeout(sendStream, 500);
+        })
+        .catch(err => {
+          console.error("Error al acceder a la cámara:", err);
+          status.innerText = "🚫 No se pudo acceder a la cámara";
+        });
+
+      startScanButton.addEventListener("click", () => {
+        socket.emit("capturar");
+        startScanButton.disabled = true;
+        startScanButton.innerText = "Procesando...";
+        loader.style.display = "inline-block";
+      });
+
+      function sendStream() {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob(blob => {
+          const reader = new FileReader();
+          if (blob instanceof Blob) {
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => {
+              socket.emit("video_frame", { image: reader.result });
+            };
+          }
+        }, "image/jpeg");
+
+        frameInterval = setTimeout(sendStream, 100);
+      }
+
+      socket.on("processed_frame", data => {
+        processedFrame.src = data.image;
+
+        if (!documentDetectedRecently) {
+          status.innerText = "✅ ¡Documento detectado!";
+          documentDetectedRecently = true;
+
+          clearTimeout(detectionTimeout);
+          detectionTimeout = setTimeout(() => {
+            status.innerText = "🟦 Ubica tu identificación dentro del recuadro";
+            documentDetectedRecently = false;
+          }, 2000);
+        }
+      });
+
+      socket.on("captured_image", data => {
+        capturedImage.src = data.image;
+        status.innerText = "📷 Captura exitosa";
+        loader.style.display = "none";
+        startScanButton.innerText = "📸 Escanear otra vez";
+        startScanButton.disabled = false;
+
+        setTimeout(() => {
+          status.innerText = "🟦 Ubica tu identificación dentro del recuadro";
+          capturedImage.src = "";
+        }, 5000);
+      });
+
+      socket.on("estado", data => {
+        console.log("[Servidor]:", data.mensaje);
+      });
+    }
   </script>
 </body>
 </html>
