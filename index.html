@@ -153,6 +153,11 @@
     socket.on("estado", data => {
       console.log("[Servidor]:", data.mensaje);
     });
+
+    socket.on("connect_error", (err) => {
+      console.error("❌ Error de conexión con socket:", err.message);
+      alert("No se pudo conectar con el servidor. Verifica conexión segura o certificado.");
+    });
   </script>
 </body>
 </html>
