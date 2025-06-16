@@ -65,6 +65,7 @@
     const socket = io("http://34.42.52.77:8600", {
       transports: ["polling"]
     });
+
     const video = document.getElementById("video");
     const startScanButton = document.getElementById("startScan");
     const sendFinalButton = document.getElementById("sendFinal");
@@ -158,6 +159,7 @@
       console.error("❌ Error de conexión con socket:", err.message);
       alert("No se pudo conectar con el servidor. Verifica conexión segura o certificado.");
     });
+
   </script>
 </body>
 </html>
